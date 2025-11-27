@@ -1,28 +1,33 @@
 <?php
-// FILE: config.php (Revised for PostgreSQL/Supabase)
+// FILE: config.php (Final Secure Version for Supabase/PostgreSQL)
 
-// --- Supabase PostgreSQL Credentials ---
-// NOTE: Use the "Connection String" details from your Supabase Project Settings
-$host = 'db.yourprojectref.supabase.co'; // Your unique host (e.g., db.xyz123abc.supabase.co)
-$dbname = 'postgres';                    // Default Supabase DB name is usually 'postgres'
-$username = 'postgres';                  // Supabase default user
-$password = 'YOUR_DB_PASSWORD';          // IMPORTANT: Your actual database password
-$port = '5432';                          // Standard PostgreSQL port
+// Supabase/PostgreSQL Credentials will be read from the hosting environment
+$host = getenv('DB_HOST');
+$dbname = getenv('DB_NAME');
+$username = getenv('DB_USER');
+$password = getenv('DB_PASS');
+$port = getenv('DB_PORT') ?: '5432'; // Default PostgreSQL port
+
+// --- Security Check ---
+if (!$host || !$dbname || !$username || !$password) {
+    // Crucial check: If variables aren't set, the app must not proceed.
+    http_response_code(500);
+    die("Error: Database environment variables are missing. Check your Render settings.");
+}
 
 try {
-    // 1. Change the DSN prefix from 'mysql' to 'pgsql'
-    // 2. Add the 'port' parameter
+    // *** CRITICAL CHANGE: Use the pgsql (PostgreSQL) driver ***
     $dsn = "pgsql:host=$host;port=$port;dbname=$dbname;user=$username;password=$password";
     
     $pdo = new PDO($dsn);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    // Optional: Set timezone for consistency, though Supabase often handles this.
-    $pdo->exec("SET TIMEZONE TO 'Africa/Lusaka';"); // Example Timezone
+    $pdo->exec("SET TIMEZONE TO 'UTC';"); // Ensure consistent time handling
     
 } catch (PDOException $e) {
-    // In a production environment, avoid showing the detailed error
+    // Log the error (but don't show the password!)
     error_log("PostgreSQL Connection failed: " . $e->getMessage());
-    die("Database connection failed. Check config.php and credentials.");
+    http_response_code(500);
+    die("Database connection failed. Please check the connection details in Render's Environment Variables.");
 }
 
 // Start session
