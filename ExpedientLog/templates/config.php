@@ -2,11 +2,12 @@
 // FILE: config.php (Final Secure Version for Supabase/PostgreSQL)
 
 // Supabase/PostgreSQL Credentials will be read from the hosting environment
-$host = getenv('DB_HOST');
-$dbname = getenv('DB_NAME');
-$username = getenv('DB_USER');
-$password = getenv('DB_PASS');
+$host = getenv('dpg-d4k4mrvpm1nc73ae8ekg-a');
+$dbname = getenv('schema_wi69');
+$username = getenv('admin');
+$password = getenv('6Tj26ci5BJWIZxeovbEY2NGbSzVO6Q9v');
 $port = getenv('DB_PORT') ?: '5432'; // Default PostgreSQL port
+
 
 // --- Security Check ---
 if (!$host || !$dbname || !$username || !$password) {
@@ -32,4 +33,5 @@ try {
 
 // Start session
 session_start();
+
 ?>
