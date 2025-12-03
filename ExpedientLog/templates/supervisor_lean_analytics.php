@@ -1,5 +1,5 @@
 <?php
-// FILE: supervisor_lean_analytics.php (Revised for PostgreSQL/Supabase)
+// FILE: supervisor_lean_analytics.php (Single File Implementation)
 
 // NOTE: Ensure 'config.php' establishes $pdo (PDO connection) and starts the session.
 require_once 'config.php'; 
@@ -32,11 +32,11 @@ $all_departments = array_merge(['All'], $departments_query);
 
 // --- Data Retrieval (All Data in one pass for simplicity) ---
 
-// 1. Core Daily Stats - FIX: Use ::date cast
+// 1. Core Daily Stats
 $stmt_stats = $pdo->prepare("
     SELECT 
-        COUNT(DISTINCT CASE WHEN t.created_at::date = :date_filter THEN t.user_id END) as active_today, 
-        COUNT(CASE WHEN t.created_at::date = :date_filter THEN t.id END) as total_logs_today, 
+        COUNT(DISTINCT CASE WHEN DATE(t.created_at) = :date_filter THEN t.user_id END) as active_today, 
+        COUNT(CASE WHEN DATE(t.created_at) = :date_filter THEN t.id END) as total_logs_today, 
         COUNT(DISTINCT u.id) as total_staff 
     FROM users u 
     LEFT JOIN tickets t ON u.id = t.user_id 
@@ -46,13 +46,13 @@ $stmt_stats->execute([':date_filter' => $date_filter]);
 $stats = $stmt_stats->fetch(PDO::FETCH_ASSOC);
 $stats['active_rate'] = $stats['total_staff'] > 0 ? round(($stats['active_today'] / $stats['total_staff']) * 100, 1) : 0;
 
-// 2. 7-Day Total Logs (For the small analytics card) - FIX: Use ::date cast
+// 2. 7-Day Total Logs (For the small analytics card)
 $prev_week_date = date('Y-m-d', strtotime('-6 days', strtotime($date_filter)));
 $stmt_7day_logs = $pdo->prepare("
     SELECT COUNT(t.id) 
     FROM tickets t
     JOIN users u ON t.user_id = u.id
-    WHERE t.created_at::date BETWEEN :start_date AND :end_date AND u.role = 'employee' " . $dept_clause
+    WHERE DATE(t.created_at) BETWEEN :start_date AND :end_date AND u.role = 'employee' " . $dept_clause
 );
 $seven_day_params = [
     ':start_date' => $prev_week_date, 
@@ -64,23 +64,23 @@ if ($department_filter !== 'All') {
 $stmt_7day_logs->execute($seven_day_params);
 $seven_day_total = $stmt_7day_logs->fetchColumn();
 
-// 3. Daily Activity Log - FIX: Use ::date cast
+// 3. Daily Activity Log
 $sql_logs = "
     SELECT t.task, t.project, t.created_at, u.username, u.department, t.is_knowledge 
     FROM tickets t 
     JOIN users u ON t.user_id = u.id 
-    WHERE t.created_at::date = :date_filter AND u.role = 'employee' " . $dept_clause . " 
+    WHERE DATE(t.created_at) = :date_filter AND u.role = 'employee' " . $dept_clause . " 
     ORDER BY t.created_at DESC
 ";
 $stmt_all_logs = $pdo->prepare($sql_logs);
 $stmt_all_logs->execute($params);
 $all_logs = $stmt_all_logs->fetchAll(PDO::FETCH_ASSOC);
 
-// 4. Top Performers - FIX: Use ::date cast
+// 4. Top Performers
 $sql_performers = "
     SELECT u.username, u.department, COUNT(t.id) as logs 
     FROM users u 
-    LEFT JOIN tickets t ON u.id = t.user_id AND t.created_at::date = :date_filter 
+    LEFT JOIN tickets t ON u.id = t.user_id AND DATE(t.created_at) = :date_filter 
     WHERE u.role = 'employee' " . $dept_clause . " 
     GROUP BY u.id, u.username, u.department 
     ORDER BY logs DESC 
@@ -354,9 +354,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         const date = dateFilter.value;
         const dept = deptFilter.value;
-        // NOTE: This file assumes a separate 'fetch_analytics.php' handles the AJAX request.
-        // You will need to create this file and ensure its queries are also PostgreSQL-compatible.
-        const url = `fetch_analytics.php?date=${date}&dept=${dept}`; 
+        const url = `fetch_analytics.php?date=${date}&dept=${dept}`; // Using a dedicated analytics endpoint
 
         try {
             const response = await fetch(url);

@@ -19,9 +19,12 @@ session_destroy();
 
 // Redirect to login with success message
 // Redirect to appropriate login page based on a role parameter (defaults to user)
-$role = isset($_GET['role']) ? strtolower($_GET['role']) : (isset($_POST['role']) ? strtolower($_POST['role']) : 'user'); // Changed default to 'user' for clarity
-if ($role === 'admin' || $role === 'administrator' || $role === 'supervisor') {
+$role = isset($_GET['role']) ? strtolower($_GET['role']) : (isset($_POST['role']) ? strtolower($_POST['role']) : "user");
+if ($role === 'admin' || $role === 'supervisor') {
     header('Location: admin_login.php?logout=success');
+}
+    elseif ($role === 'user' || $role === 'employee') {
+    header('Location: login.php?logout=success');
 } else {
     header('Location: login.php?logout=success');
 }

@@ -11,7 +11,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $error = "Please fill in all fields.";
     } else {
         try {
-            // NOTE: This SQL SELECT query is standard and works perfectly with PostgreSQL.
             $stmt = $pdo->prepare("SELECT id, username, password, role FROM users WHERE username = ?");
             $stmt->execute([$username]);
             $user = $stmt->fetch();
@@ -34,7 +33,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             }
         } catch (Exception $e) {
             $error = "Login error. Try again.";
-            // You should log $e->getMessage() for debugging purposes
         }
     }
 }

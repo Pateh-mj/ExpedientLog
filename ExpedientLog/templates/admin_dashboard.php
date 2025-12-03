@@ -1,5 +1,5 @@
 <?php
-// FILE: admin_dashboard.php (Revised for PostgreSQL/Supabase)
+// FILE: admin_dashboard.php - The single, unified, secure dashboard
 
 // NOTE: Ensure 'config.php' establishes $pdo (PDO connection) and starts the session.
 require_once 'config.php'; 
@@ -8,7 +8,22 @@ require_once 'config.php';
 if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'], ['supervisor','admin'])) {
     header("Location: login.php"); exit();
 }
+
+// Inactivity Timeout (30 minutes) - RECOMMENDED FIX 
+if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity'] > 1800)) { 
+    header("Location: logout.php"); 
+    exit(); 
+}
 $_SESSION['last_activity'] = time();
+
+// --- Define allowed departments for forms ---
+$allowed_departments = [
+    'General' => 'General Operations',
+    'News' => 'News & Editorial',
+    'Technical' => 'Technical Support',
+    'Finance' => 'Finance & Accounting',
+    'HR' => 'Human Resources'
+];
 
 // --- Date and Filter Handling ---
 $date_filter = $_GET['date'] ?? date('Y-m-d'); 
@@ -22,9 +37,18 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_filter)) {
 $today_display = date('l, j F Y', strtotime($date_filter));
 $dept_clause = ($department_filter !== 'All') ? " AND u.department = :department_filter" : "";
 
-// Fetch all departments for the filter dropdown (Standard SQL - OK)
+// Fetch all departments for the filter dropdown
 $departments_query = $pdo->query("SELECT DISTINCT department FROM users WHERE role = 'employee' AND department IS NOT NULL AND department <> '' ORDER BY department ASC")->fetchAll(PDO::FETCH_COLUMN);
 $all_departments = array_merge(['All'], $departments_query);
+
+// Initialize variables to prevent undefined warnings
+$stats = ['total_logs_today' => 0, 'active_today' => 0, 'total_staff' => 0, 'active_rate' => 0];
+$all_logs = [];
+$recent_logs = [];
+$top_performers = [];
+$projects = [];
+$knowledge_leaders = [];
+$max_tasks = 1;
 
 // --- Secure Data Retrieval (All Data in one pass) ---
 $params = [':date_filter' => $date_filter];
@@ -33,26 +57,27 @@ if ($department_filter !== 'All') {
 }
 
 try {
-    // 1. Core Daily Stats - FIX: Use ::date cast
-    $stmt_stats = $pdo->prepare("
+    // 1. Core Daily Stats (KPIs correctly filtered)
+    $sql_stats = "
         SELECT 
-            COUNT(DISTINCT CASE WHEN t.created_at::date = :date_filter THEN t.user_id END) as active_today, 
-            COUNT(CASE WHEN t.created_at::date = :date_filter THEN t.id END) as total_logs_today, 
+            COUNT(DISTINCT CASE WHEN DATE(t.created_at) = :date_filter THEN t.user_id END) as active_today, 
+            COUNT(CASE WHEN DATE(t.created_at) = :date_filter THEN t.id END) as total_logs_today, 
             COUNT(DISTINCT u.id) as total_staff 
         FROM users u 
         LEFT JOIN tickets t ON u.id = t.user_id 
-        WHERE u.role = 'employee'
-    ");
-    $stmt_stats->execute([':date_filter' => $date_filter]);
+        WHERE u.role = 'employee' " . $dept_clause . " 
+    ";
+    $stmt_stats = $pdo->prepare($sql_stats);
+    $stmt_stats->execute($params);
     $stats = $stmt_stats->fetch(PDO::FETCH_ASSOC);
     $stats['active_rate'] = $stats['total_staff'] > 0 ? round(($stats['active_today'] / $stats['total_staff']) * 100, 1) : 0;
     
-    // 2. Daily Activity Log - FIX: Use ::date cast
+    // 2. Daily Activity Log - Now selecting t.id and t.image_path
     $sql_logs = "
-        SELECT t.task, t.project, t.created_at, u.username, u.department, t.is_knowledge 
+        SELECT t.id, t.task, t.project, t.created_at, u.username, u.department, t.is_knowledge, t.image_path 
         FROM tickets t 
         JOIN users u ON t.user_id = u.id 
-        WHERE t.created_at::date = :date_filter AND u.role = 'employee' " . $dept_clause . " 
+        WHERE DATE(t.created_at) = :date_filter AND u.role = 'employee' " . $dept_clause . " 
         ORDER BY t.created_at DESC
     ";
     $stmt_all_logs = $pdo->prepare($sql_logs);
@@ -60,11 +85,11 @@ try {
     $all_logs = $stmt_all_logs->fetchAll(PDO::FETCH_ASSOC);
     $recent_logs = array_slice($all_logs, 0, 8); // For notifications
 
-    // 3. Top Performers (Filtered by Date/Dept) - FIX: Use ::date cast
+    // 3. Top Performers (Filtered by Date/Dept)
     $sql_performers = "
         SELECT u.username, u.department, COUNT(t.id) as logs 
         FROM users u 
-        LEFT JOIN tickets t ON u.id = t.user_id AND t.created_at::date = :date_filter 
+        LEFT JOIN tickets t ON u.id = t.user_id AND DATE(t.created_at) = :date_filter 
         WHERE u.role = 'employee' " . $dept_clause . " 
         GROUP BY u.id, u.username, u.department 
         ORDER BY logs DESC 
@@ -74,12 +99,12 @@ try {
     $stmt_performers->execute($params);
     $top_performers = $stmt_performers->fetchAll(PDO::FETCH_ASSOC);
 
-    // 4. Project Breakdown (Filtered by Date/Dept) - FIX: Use ::date cast
+    // 4. Project Breakdown (Filtered by Date/Dept)
     $sql_projects = "
         SELECT project, COUNT(*) as tasks 
         FROM tickets t 
         JOIN users u ON t.user_id = u.id
-        WHERE t.created_at::date = :date_filter AND u.role = 'employee' " . $dept_clause . " AND project NOT IN ('General','Personal','')
+        WHERE DATE(t.created_at) = :date_filter AND u.role = 'employee' " . $dept_clause . " AND project NOT IN ('General','Personal','')
         GROUP BY project 
         ORDER BY tasks DESC 
         LIMIT 6
@@ -89,7 +114,7 @@ try {
     $projects = $stmt_projects->fetchAll(PDO::FETCH_ASSOC);
     $max_tasks = max(array_column($projects, 'tasks') ?: [1]);
 
-    // 5. Knowledge Leaders (All Time - Standard SQL - NO CHANGE)
+    // 5. Knowledge Leaders (All Time - Static)
     $stmt_kb_leaders = $pdo->prepare("
         SELECT u.username, u.department, COUNT(*) as contrib 
         FROM tickets t 
@@ -103,8 +128,10 @@ try {
     $knowledge_leaders = $stmt_kb_leaders->fetchAll(PDO::FETCH_ASSOC);
 
 } catch (PDOException $e) {
-    // Handle database errors gracefully
-    die("Database Error: Could not load data. " . $e->getMessage());
+    error_log('Admin Dashboard Error: ' . $e->getMessage());
+    if ($_SERVER['SERVER_NAME'] === 'localhost' || $_SERVER['SERVER_NAME'] === '127.0.0.1') {
+        echo '<div class="alert alert-danger m-4">Database Error: ' . htmlspecialchars($e->getMessage()) . '</div>';
+    }
 }
 ?>
 
@@ -168,7 +195,7 @@ try {
                     <ul class="dropdown-menu dropdown-menu-end shadow-lg">
                         <li><h6 class="dropdown-header text-muted">Supervisor Access</h6></li>
                         <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item" href="logout.php"><i class="fas fa-sign-out-alt me-2"></i> Logout</a></li>
+                        <li><a class="dropdown-item" href="logout.php?role=admin"><i class="fas fa-sign-out-alt me-2"></i> Logout</a></li>
                     </ul>
                 </div>
             </div>
@@ -197,7 +224,7 @@ try {
             <div class="col-md-6 d-flex justify-content-end align-items-end gap-3">
                 <button type="submit" class="btn btn-primary fw-bold"><i class="fas fa-filter me-2"></i> Apply Filters</button>
                 <a href="knowledge.php" class="btn btn-success fw-bold"> Knowledge Base</a>
-                <a href="export.php?date=<?= urlencode($date_filter) ?>&dept=<?= urlencode($department_filter) ?>" class="btn btn-success fw-bold" target="_blank"><i class="fas fa-file-excel me-2"></i> Export Log</a>
+                <a href="export_today.php?date=<?= urlencode($date_filter) ?>&dept=<?= urlencode($department_filter) ?>" class="btn btn-success fw-bold" target="_blank"><i class="fas fa-file-excel me-2"></i> Export Log</a>
                 <div class="dropdown">
                     <button class="btn btn-outline-secondary" type="button" data-bs-toggle="dropdown">
                         <i class="fas fa-bell"></i> <span class="badge bg-danger ms-1"><?= count($recent_logs) ?></span>
@@ -209,8 +236,8 @@ try {
                         <?php endif; ?>
                         <?php foreach($recent_logs as $log): ?>
                             <li><a class="dropdown-item py-2 border-bottom" href="#">
-                                <div class="fw-semibold text-dark"><?= htmlspecialchars($log['username']) ?></div>
-                                <small class="text-muted"><?= htmlspecialchars(substr($log['task'], 0, 40)) ?>... (<?= substr($log['created_at'],11,5) ?>)</small>
+                                <div class="fw-semibold text-dark"><?= htmlspecialchars($log['username'] ?? 'N/A') ?></div>
+                                <small class="text-muted"><?= htmlspecialchars(substr($log['task'] ?? '', 0, 40)) ?>... (<?= substr($log['created_at'] ?? '00:00:00', 11, 5) ?>)</small>
                             </a></li>
                         <?php endforeach; ?>
                     </ul>
@@ -228,7 +255,7 @@ try {
                     <i class="fas fa-list-check fa-2x me-3 text-primary opacity-75"></i>
                     <div>
                         <div class="kpi-number"><?= $stats['total_logs_today'] ?></div>
-                        <div class="kpi-label">Total Logs Filed</div>
+                        <div class="kpi-label">Total Logs Filed (Filtered)</div>
                     </div>
                 </div>
             </div>
@@ -240,7 +267,7 @@ try {
                     <i class="fas fa-user-check fa-2x me-3 text-success opacity-75"></i>
                     <div>
                         <div class="kpi-number text-success"><?= $stats['active_today'] ?></div>
-                        <div class="kpi-label">Staff Active Today</div>
+                        <div class="kpi-label">Staff Active Today (Filtered)</div>
                     </div>
                 </div>
             </div>
@@ -252,7 +279,7 @@ try {
                     <i class="fas fa-gauge-high fa-2x me-3 text-info opacity-75"></i>
                     <div>
                         <div class="kpi-number text-info"><?= $stats['active_rate'] ?>%</div>
-                        <div class="kpi-label">Daily Activity Rate</div>
+                        <div class="kpi-label">Daily Activity Rate (Filtered)</div>
                     </div>
                 </div>
             </div>
@@ -264,7 +291,7 @@ try {
                     <i class="fas fa-users fa-2x me-3 text-secondary opacity-75"></i>
                     <div>
                         <div class="kpi-number text-dark"><?= $stats['total_staff'] ?></div>
-                        <div class="kpi-label"><a href="supervisor_lean_analytics.php">Total Analytics</a></div>
+                        <div class="kpi-label">Total Staff in Department (Filtered)</div>
                     </div>
                 </div>
             </div>
@@ -296,20 +323,41 @@ try {
                                     <th>Project</th>
                                     <th>KB</th>
                                     <th>Task Snippet</th>
+                                    <th>Image</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <?php if (empty($all_logs)): ?>
-                                    <tr><td colspan="6" class="text-center py-4 text-muted">No activity found for this filter.</td></tr>
+                                    <tr><td colspan="7" class="text-center py-4 text-muted">No activity found for this filter.</td></tr>
                                 <?php endif; ?>
                                 <?php foreach($all_logs as $log): ?>
                                     <tr>
-                                        <td class="text-muted fw-medium"><?= substr($log['created_at'],11,5) ?></td>
-                                        <td class="fw-semibold"><?= htmlspecialchars($log['username']) ?></td>
+                                        <td class="text-muted fw-medium"><?= substr($log['created_at'] ?? '00:00:00', 11, 5) ?></td>
+                                        <td class="fw-semibold"><?= htmlspecialchars($log['username'] ?? 'N/A') ?></td>
                                         <td><small class="text-muted"><?= htmlspecialchars($log['department'] ?: '—') ?></small></td>
                                         <td class="text-primary fw-medium"><small><?= htmlspecialchars($log['project'] ?: 'General') ?></small></td>
-                                        <td><span class="badge <?= $log['is_knowledge'] ? 'knowledge-yes' : 'bg-light text-muted' ?>"><?= $log['is_knowledge'] ? 'Yes' : 'No' ?></span></td>
-                                        <td><?= htmlspecialchars(substr($log['task'], 0, 70)) ?><?= (strlen($log['task']) > 70) ? '...' : '' ?></td>
+                                        <td><span class="badge <?= ($log['is_knowledge'] ?? 0) ? 'knowledge-yes' : 'bg-light text-muted' ?>"><?= ($log['is_knowledge'] ?? 0) ? 'Yes' : 'No' ?></span></td>
+                                        <td class="task-snippet-cell">
+                                            <button type="button" class="btn btn-link p-0 text-start text-dark fw-normal text-decoration-none" 
+                                                    data-bs-toggle="modal" 
+                                                    data-bs-target="#taskDetailModal" 
+                                                    data-task-id="<?= $log['id'] ?>" 
+                                                    data-task-text="<?= htmlspecialchars($log['task'] ?? '') ?>">
+                                                <?= htmlspecialchars(substr($log['task'] ?? '', 0, 70)) ?><?= (strlen($log['task'] ?? '') > 70) ? '...' : '' ?>
+                                            </button>
+                                        </td>
+                                        <td>
+                                            <?php if ($log['image_path'] ?? null): ?>
+                                                <button type="button" class="btn btn-sm btn-outline-info" 
+                                                        data-bs-toggle="modal" 
+                                                        data-bs-target="#imageModal" 
+                                                        data-bs-image-url="<?= htmlspecialchars($log['image_path']) ?>">
+                                                     <i class="fas fa-image"></i> View
+                                                </button>
+                                            <?php else: ?>
+                                                —
+                                            <?php endif; ?>
+                                        </td>
                                     </tr>
                                 <?php endforeach; ?>
                             </tbody>
@@ -334,7 +382,7 @@ try {
                                 <div class="d-flex align-items-center">
                                     <span class="fw-bold me-3 text-primary"><?= $index + 1 ?>.</span>
                                     <div>
-                                        <div class="fw-semibold text-dark"><?= htmlspecialchars($p['username']) ?></div>
+                                        <div class="fw-semibold text-dark"><?= htmlspecialchars($p['username'] ?? 'N/A') ?></div>
                                         <small class="text-muted"><?= htmlspecialchars($p['department'] ?: '—') ?></small>
                                     </div>
                                 </div>
@@ -356,7 +404,7 @@ try {
                     <?php foreach($projects as $p): ?>
                         <div class="mb-3">
                             <div class="d-flex justify-content-between mb-1">
-                                <strong class="text-dark"><?= htmlspecialchars($p['project']) ?></strong>
+                                <strong class="text-dark"><?= htmlspecialchars($p['project'] ?? 'N/A') ?></strong>
                                 <small class="text-muted fw-bold"><?= $p['tasks'] ?> tasks</small>
                             </div>
                             <div class="progress">
@@ -373,7 +421,7 @@ try {
         <div class="col-12">
             <div class="card">
                 <div class="card-header bg-white">
-                    <h5 class="data-header mb-0 text-accent"><i class="fas fa-lightbulb me-2 text-accent"></i> Knowledge Base Contributions</h5>
+                    <h5 class="data-header mb-0 text-accent"><i class="fas fa-lightbulb me-2 text-accent"></i> Knowledge Base Contributions (All Time)</h5>
                 </div>
                 <div class="card-body">
                     <div class="row">
@@ -386,7 +434,7 @@ try {
                                     <div class="d-flex align-items-center">
                                         <span class="fw-bold me-3 text-primary"><?= $index + 1 ?>.</span>
                                         <div>
-                                            <div class="fw-semibold text-dark"><?= htmlspecialchars($l['username']) ?></div>
+                                            <div class="fw-semibold text-dark"><?= htmlspecialchars($l['username'] ?? 'N/A') ?></div>
                                             <small class="text-muted"><?= htmlspecialchars($l['department'] ?: '—') ?></small>
                                         </div>
                                     </div>
@@ -402,6 +450,41 @@ try {
 
 </div>
 
+<div class="modal fade" id="taskDetailModal" tabindex="-1" aria-labelledby="taskDetailModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="taskDetailModalLabel">Full Task Detail</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p id="modalTaskText" class="text-break"></p>
+      </div>
+      <div class="modal-footer">
+        <span class="text-muted me-auto small" id="modalTaskId"></span>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="modal fade" id="imageModal" tabindex="-1" aria-labelledby="imageModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="imageModalLabel">Task Attachment</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body text-center">
+        <img id="modalImage" src="" class="img-fluid rounded" alt="Task Attachment">
+        <p class="mt-3 text-muted small">Path: <span id="imagePathDisplay"></span></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 // Live Clock
 const clockElement = document.getElementById('clock');
@@ -411,6 +494,47 @@ setInterval(() => {
 }, 1000);
 // Initial set
 clockElement.textContent = new Date().toLocaleTimeString('en-GB', {hour: '2-digit', minute:'2-digit', second: '2-digit'});
+
+
+// JavaScript for Modal Image Loading
+document.addEventListener('DOMContentLoaded', function() {
+    const imageModal = document.getElementById('imageModal');
+    if (imageModal) {
+        imageModal.addEventListener('show.bs.modal', event => {
+            // Button that triggered the modal
+            const button = event.relatedTarget;
+            // Extract info from data-bs-* attributes
+            const imageUrl = button.getAttribute('data-bs-image-url');
+            
+            // Update the modal's content.
+            const modalImage = imageModal.querySelector('#modalImage');
+            const imagePathDisplay = imageModal.querySelector('#imagePathDisplay');
+            
+            // NOTE: The imageUrl should point to the public path where images are stored (e.g., /uploads/image_name.jpg)
+            modalImage.src = imageUrl; 
+            imagePathDisplay.textContent = imageUrl;
+        });
+    }
+
+    // --- Task Detail Modal Handler (NEW) ---
+    const detailModal = document.getElementById('taskDetailModal');
+    if (detailModal) {
+        detailModal.addEventListener('show.bs.modal', event => {
+            // Button that triggered the modal
+            const button = event.relatedTarget; 
+            // Extract info from data-task-* attributes set in the PHP loop
+            const taskId = button.getAttribute('data-task-id');
+            const taskText = button.getAttribute('data-task-text');
+
+            // Update the modal's content elements
+            const modalTaskText = detailModal.querySelector('#modalTaskText');
+            const modalTaskId = detailModal.querySelector('#modalTaskId');
+
+            modalTaskText.textContent = taskText;
+            modalTaskId.textContent = `Task ID: ${taskId}`;
+        });
+    }
+});
 </script>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>

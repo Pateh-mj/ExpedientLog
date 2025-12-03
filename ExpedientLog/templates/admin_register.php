@@ -67,14 +67,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $role = 'supervisor'; // This account will be created as supervisor
 
             try {
-                // SQL is cross-database compatible (PDO)
                 $stmt = $pdo->prepare("INSERT INTO users (username, password, role, department) VALUES (?, ?, ?, ?)");
                 $stmt->execute([$username, $password, $role, $department]);
                 unset($_SESSION['csrf']);
                 header("Location: login.php?registered=1&type=admin");
                 exit();
             } catch (PDOException $e) {
-                if ($e->getCode() == '23000') { // 23000 is the general integrity constraint violation code (e.g., unique key violation)
+                if ($e->getCode() == '23000') {
                     $errors[] = 'This username is already taken. Please choose another.';
                 } else {
                     error_log('Admin registration error: ' . $e->getMessage());
@@ -180,6 +179,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         <form method="post" class="needs-validation" novalidate>
                             <input type="hidden" name="csrf" value="<?= htmlspecialchars($_SESSION['csrf'] ?? '') ?>">
                             
+                            <!-- Admin Key -->
                             <div class="mb-4">
                                 <label class="form-label" for="admin_key">Administrator Key</label>
                                 <div class="input-group">
@@ -191,6 +191,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                 </div>
                             </div>
 
+                            <!-- Username -->
                             <div class="mb-4">
                                 <label class="form-label" for="username">Username</label>
                                 <div class="input-group">
@@ -203,6 +204,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                 </div>
                             </div>
 
+                            <!-- Password -->
                             <div class="mb-3">
                                 <label class="form-label" for="password">Password</label>
                                 <div class="input-group">
@@ -219,6 +221,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                 <div class="form-text text-muted">Must be at least 8 characters with numbers & letters</div>
                             </div>
 
+                            <!-- Confirm Password -->
                             <div class="mb-4">
                                 <label class="form-label" for="password_confirm">Confirm Password</label>
                                 <div class="input-group">
@@ -230,6 +233,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                 </div>
                             </div>
 
+                            <!-- Department -->
                             <div class="mb-4">
                                 <label class="form-label" for="department">Department</label>
                                 <select id="department" name="department" class="form-select" required>

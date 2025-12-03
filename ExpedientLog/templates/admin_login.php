@@ -100,6 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
         <div class="card login-card border-0">
           
+          <!-- Header -->
           <div class="card-header">
             <div class="mb-3">
               <span class="znbc-badge">EXPEDIA INTERNAL SYSTEM</span>
@@ -108,8 +109,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             <p class="opacity-90">Supervisor & Admin Portal</p>
           </div>
 
+          <!-- Body -->
           <div class="card-body p-5 bg-white">
 
+            <!-- Alerts -->
             <?php if ($error): ?>
               <div class="alert alert-danger alert-dismissible fade show">
                 <strong>Error:</strong> <?php echo htmlspecialchars($error); ?>
@@ -121,6 +124,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
               <div class="alert alert-success">You have been logged out securely.</div>
             <?php endif; ?>
 
+            <!-- Login Form -->
             <form method="post">
               <div class="mb-4">
                 <input type="text" name="username" class="form-control form-control-lg" 
@@ -157,6 +161,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
           </div>
         </div>
 
+        <!-- Footer -->
         <div class="text-center text-white mt-4 opacity-75">
           <small>
             © 2025 ExpedientLog • Proudly Zambian<br>
