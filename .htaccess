@@ -1,0 +1,13 @@
+Options -Indexes
+
+RewriteEngine On
+
+# Block direct access to sensitive files
+RewriteRule ^\.env$ - [F,L]
+RewriteRule ^src/ - [F,L]
+RewriteRule ^config/ - [F,L]
+RewriteRule ^storage/ - [F,L]
+
+# Route everything through public/
+RewriteCond %{REQUEST_URI} !^/[^/]+/public/
+RewriteRule ^(.*)$ public/$1 [L,QSA]

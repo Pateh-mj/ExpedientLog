@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -E \"\\\\.\\(html|js|css|json\\)$\")",
+      "Bash(grep -E \"\\\\.py$|\\\\.php$\")",
+      "Bash(rm -f app.py requirements.txt test_db.php)",
+      "Bash(rm -rf .venv templates/supervisor_lean_analytics.php)",
+      "Bash(cd \"c:\\\\xampp\\\\htdocs\\\\ExpedientLog\" && mkdir -p public/assets/css public/assets/js public/assets/img src/Core src/Controllers src/Models src/Views/layouts src/Views/auth src/Views/dashboard src/Views/knowledge src/Views/announcements src/Views/profile src/Views/admin src/Views/errors config storage/uploads && echo \"done\")",
+      "Bash(\"c:\\\\xampp\\\\mysql\\\\bin\\\\mysql.exe\" -u root -e \"source schema.sql\")",
+      "Bash(\"c:\\\\xampp\\\\mysql\\\\bin\\\\mysql.exe\" -u root exp_log -e \"UPDATE tickets SET image_path = SUBSTRING\\(image_path, 9\\) WHERE image_path LIKE 'uploads/%';\")",
+      "Bash(\"c:\\\\xampp\\\\mysql\\\\bin\\\\mysql.exe\" -u root exp_log -e \"SELECT id, image_path FROM tickets WHERE image_path IS NOT NULL;\")",
+      "Bash(php -l \"c:\\\\xampp\\\\htdocs\\\\ExpedientLog\\\\public\\\\index.php\")",
+      "Bash(php -l \"c:\\\\xampp\\\\htdocs\\\\ExpedientLog\\\\src\\\\Core\\\\Router.php\")",
+      "Bash(php -l \"c:\\\\xampp\\\\htdocs\\\\ExpedientLog\\\\src\\\\Core\\\\Auth.php\")",
+      "Bash(php -l \"c:\\\\xampp\\\\htdocs\\\\ExpedientLog\\\\src\\\\Core\\\\DB.php\")",
+      "Bash(php -l \"c:\\\\xampp\\\\htdocs\\\\ExpedientLog\\\\src\\\\Controllers\\\\AuthController.php\")",
+      "PowerShell(& \"c:\\\\xampp\\\\php\\\\php.exe\" -l \"c:\\\\xampp\\\\htdocs\\\\ExpedientLog\\\\src\\\\Views\\\\layouts\\\\app.php\")",
+      "PowerShell(& \"c:\\\\xampp\\\\php\\\\php.exe\" -l \"c:\\\\xampp\\\\htdocs\\\\ExpedientLog\\\\src\\\\Views\\\\layouts\\\\admin.php\")",
+      "PowerShell(& \"c:\\\\xampp\\\\php\\\\php.exe\" -l \"c:\\\\xampp\\\\htdocs\\\\ExpedientLog\\\\src\\\\Views\\\\admin\\\\dashboard.php\")",
+      "Bash(php -l src/Controllers/AdminController.php)",
+      "Bash(php -l src/Models/Ticket.php)",
+      "Bash(php -l src/Views/admin/activity_log.php)",
+      "Bash(php -l src/Core/DB.php)"
+    ],
+    "additionalDirectories": [
+      "c:\\xampp\\htdocs\\ExpedientLog\\public\\assets"
+    ]
+  }
+}

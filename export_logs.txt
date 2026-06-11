@@ -1,0 +1,338 @@
+<?php
+$pageTitle    = 'Activity Logs';
+$pageSubtitle = 'All logged tasks, issues & tickets';
+$totalAll     = count($logs);
+$kbCount      = count(array_filter($logs, fn($l) => $l['is_knowledge']));
+$uniqueStaff  = count(array_unique(array_column($logs, 'username')));
+?>
+
+<style>
+/* ── Page-level vars ─────────────────────────────────── */
+.al-toolbar {
+  display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end;
+}
+.al-chip {
+  display:inline-flex;align-items:center;gap:.35rem;
+  background:var(--primary-subtle);color:var(--primary);
+  font-size:.7rem;font-weight:700;padding:.2rem .6rem;
+  border-radius:99px;white-space:nowrap;
+}
+.al-chip.green { background:#d1fae5;color:#065f46; }
+.al-chip.amber { background:#fef3c7;color:#92400e; }
+.al-chip.red   { background:#fee2e2;color:#991b1b; }
+
+/* Entry detail drawer */
+#al-drawer {
+  position:fixed;top:0;right:-480px;width:460px;max-width:96vw;height:100vh;
+  background:#fff;box-shadow:-6px 0 40px rgba(0,0,0,.14);
+  z-index:600;transition:right .28s cubic-bezier(.4,0,.2,1);
+  display:flex;flex-direction:column;border-left:1px solid var(--border);
+}
+#al-drawer.open { right:0; }
+#al-drawer-overlay {
+  position:fixed;inset:0;background:rgba(0,0,0,.25);z-index:599;
+  opacity:0;pointer-events:none;transition:opacity .28s;
+}
+#al-drawer-overlay.open { opacity:1;pointer-events:auto; }
+
+.drawer-header {
+  padding:1rem 1.25rem;border-bottom:1px solid var(--border);
+  background:#fafbfc;display:flex;align-items:flex-start;gap:.75rem;
+}
+.drawer-avatar {
+  width:38px;height:38px;border-radius:50%;background:var(--primary);
+  color:#fff;font-weight:800;font-size:.9rem;display:flex;
+  align-items:center;justify-content:center;flex-shrink:0;margin-top:2px;
+}
+.drawer-meta { flex:1;min-width:0; }
+.drawer-meta strong { font-size:.9rem;color:var(--text);display:block; }
+.drawer-meta span   { font-size:.75rem;color:var(--text-muted); }
+.drawer-body { padding:1.25rem;flex:1;overflow-y:auto; }
+.drawer-body p { line-height:1.8;color:var(--text);font-size:.9rem;margin:0 0 1rem; }
+.drawer-footer {
+  padding:.875rem 1.25rem;border-top:1px solid var(--border);background:#fafbfc;
+  display:flex;gap:.6rem;justify-content:flex-end;
+}
+
+/* Table tweaks */
+.data-table td.al-task-cell {
+  cursor:pointer;
+  transition:color .15s;
+}
+.data-table td.al-task-cell:hover { color:var(--primary); }
+.al-row-num { color:var(--text-muted);font-size:.75rem;font-variant-numeric:tabular-nums; }
+</style>
+
+<!-- ── Stat strip ────────────────────────────────────────── -->
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.75rem;margin-bottom:1.25rem">
+  <div class="kpi-card">
+    <div class="kpi-label"><i class="fas fa-list-check"></i> Total Entries</div>
+    <div class="kpi-number"><?= $totalAll ?></div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label"><i class="fas fa-lightbulb"></i> KB Articles</div>
+    <div class="kpi-number"><?= $kbCount ?></div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label"><i class="fas fa-users"></i> Staff Logged</div>
+    <div class="kpi-number"><?= $uniqueStaff ?></div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label"><i class="fas fa-calendar-day"></i> Date</div>
+    <div class="kpi-number" style="font-size:1rem"><?= date('j M Y', strtotime($date)) ?></div>
+  </div>
+</div>
+
+<!-- ── Toolbar: filter + export ─────────────────────────── -->
+<div class="card" style="padding:.875rem 1.25rem;margin-bottom:1.25rem;border-radius:12px">
+  <form method="GET" action="<?= url('admin/activity-log') ?>">
+    <div class="al-toolbar">
+
+      <div>
+        <label class="form-label" style="font-size:.75rem;margin-bottom:.25rem">Date</label>
+        <input type="date" name="date" class="form-control"
+               value="<?= e($date) ?>"
+               style="padding:.4rem .75rem;font-size:.85rem;width:auto">
+      </div>
+
+      <div>
+        <label class="form-label" style="font-size:.75rem;margin-bottom:.25rem">Department</label>
+        <select name="dept" class="form-select" style="padding:.4rem .75rem;font-size:.85rem;width:auto">
+          <?php foreach ($departments as $d): ?>
+            <option value="<?= e($d) ?>" <?= $d === $dept ? 'selected' : '' ?>><?= e($d) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+
+      <div>
+        <label class="form-label" style="font-size:.75rem;margin-bottom:.25rem">Type</label>
+        <select name="type" class="form-select" style="padding:.4rem .75rem;font-size:.85rem;width:auto">
+          <option value="all"       <?= $typeFilter === 'all'       ? 'selected' : '' ?>>All Types</option>
+          <option value="task"      <?= $typeFilter === 'task'      ? 'selected' : '' ?>>Tasks only</option>
+          <option value="knowledge" <?= $typeFilter === 'knowledge' ? 'selected' : '' ?>>KB only</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="form-label" style="font-size:.75rem;margin-bottom:.25rem">Search</label>
+        <input type="text" name="q" class="form-control"
+               value="<?= e($search) ?>" placeholder="keyword…"
+               style="padding:.4rem .75rem;font-size:.85rem;width:180px">
+      </div>
+
+      <div style="display:flex;gap:.5rem;margin-left:auto;align-items:flex-end">
+        <button type="submit" class="btn btn-primary btn-sm">
+          <i class="fas fa-filter"></i> Filter
+        </button>
+        <a href="<?= url('admin/export') ?>?date=<?= urlencode($date) ?>&dept=<?= urlencode($dept) ?>&type=<?= urlencode($typeFilter) ?>&q=<?= urlencode($search) ?>"
+           class="btn btn-ghost btn-sm" style="display:flex;align-items:center;gap:.4rem">
+          <i class="fas fa-download"></i> Export CSV
+        </a>
+      </div>
+
+    </div>
+  </form>
+</div>
+
+<!-- ── Log table ────────────────────────────────────────── -->
+<div class="card" style="border-radius:12px;overflow:hidden;margin-bottom:1.5rem">
+  <div class="card-header-clean" style="background:#fafbfc">
+    <div style="display:flex;align-items:center;gap:.6rem">
+      <i class="fas fa-clock-rotate-left" style="color:var(--text-muted);font-size:.85rem"></i>
+      <span style="font-weight:700;font-size:.875rem;color:var(--text)">Activity Log</span>
+      <?php if ($dept !== 'All'): ?>
+        <span class="al-chip"><?= e($dept) ?></span>
+      <?php endif; ?>
+      <?php if ($typeFilter !== 'all'): ?>
+        <span class="al-chip amber"><?= $typeFilter === 'knowledge' ? 'KB only' : 'Tasks only' ?></span>
+      <?php endif; ?>
+      <?php if ($search !== ''): ?>
+        <span class="al-chip amber"><i class="fas fa-magnifying-glass"></i> "<?= e(mb_strimwidth($search, 0, 20, '…')) ?>"</span>
+      <?php endif; ?>
+    </div>
+    <span style="font-size:.75rem;color:var(--text-muted)"><?= count($logs) ?> entries</span>
+  </div>
+
+  <div style="overflow-x:auto">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th style="width:36px">#</th>
+          <th>Time</th>
+          <th>Employee</th>
+          <th>Department</th>
+          <th>Project</th>
+          <th>Type</th>
+          <th>Task / Issue</th>
+          <th style="width:36px"></th>
+        </tr>
+      </thead>
+      <tbody>
+        <?php if (empty($logs)): ?>
+          <tr>
+            <td colspan="8" style="text-align:center;padding:3rem;color:var(--text-muted);font-size:.875rem">
+              <i class="fas fa-inbox" style="font-size:1.5rem;display:block;margin-bottom:.5rem;opacity:.4"></i>
+              No entries found for the selected filters.
+            </td>
+          </tr>
+        <?php endif; ?>
+
+        <?php foreach ($logs as $i => $log): ?>
+          <?php
+            $initials = strtoupper(substr($log['username'], 0, 2));
+            $colors   = ['#3b5bdb','#0ca678','#f59f00','#e64980','#7048e8','#1098ad'];
+            $color    = $colors[crc32($log['username']) % count($colors)];
+          ?>
+          <tr data-log-id="<?= (int)$log['id'] ?>">
+            <td class="al-row-num"><?= $i + 1 ?></td>
+            <td style="font-variant-numeric:tabular-nums;color:var(--text-muted);font-size:.8rem;white-space:nowrap">
+              <?= substr($log['created_at'], 11, 5) ?>
+            </td>
+            <td>
+              <div style="display:flex;align-items:center;gap:.5rem">
+                <div style="width:26px;height:26px;border-radius:50%;background:<?= $color ?>;
+                            color:#fff;font-size:.65rem;font-weight:800;display:flex;
+                            align-items:center;justify-content:center;flex-shrink:0">
+                  <?= $initials ?>
+                </div>
+                <span style="font-weight:600;font-size:.825rem"><?= e($log['username']) ?></span>
+              </div>
+            </td>
+            <td style="font-size:.78rem;color:var(--text-muted)"><?= e($log['department'] ?: '—') ?></td>
+            <td>
+              <?php if ($log['project']): ?>
+                <span style="background:var(--primary-subtle);color:var(--primary);font-size:.7rem;
+                             font-weight:600;padding:.15rem .45rem;border-radius:4px;white-space:nowrap">
+                  <?= e($log['project']) ?>
+                </span>
+              <?php else: ?>
+                <span style="color:var(--text-muted)">—</span>
+              <?php endif; ?>
+            </td>
+            <td>
+              <?php if ($log['is_knowledge']): ?>
+                <span class="badge-kb"><i class="fas fa-lightbulb"></i> KB</span>
+              <?php else: ?>
+                <span style="background:#e0f2fe;color:#0369a1;font-size:.7rem;font-weight:600;
+                             padding:.15rem .45rem;border-radius:4px">Task</span>
+              <?php endif; ?>
+            </td>
+            <td class="al-task-cell"
+                style="max-width:340px;font-size:.825rem;line-height:1.4"
+                onclick="openDrawer(this)"
+                data-id="<?= $log['id'] ?>"
+                data-task="<?= e($log['task']) ?>"
+                data-username="<?= e($log['username']) ?>"
+                data-time="<?= substr($log['created_at'], 11, 5) ?>"
+                data-department="<?= e($log['department'] ?: '') ?>"
+                data-project="<?= e($log['project'] ?: '') ?>"
+                data-iskb="<?= $log['is_knowledge'] ? 'true' : 'false' ?>"
+                data-color="<?= $color ?>"
+                title="Click to read full entry">
+              <?= e(mb_strimwidth($log['task'], 0, 80, '…')) ?>
+            </td>
+            <td>
+              <?php if ($log['image_path']): ?>
+                <button data-image-src="<?= url('uploads/' . basename($log['image_path'])) ?>"
+                        style="background:none;border:1px solid var(--border);border-radius:6px;
+                               cursor:pointer;padding:.25rem .4rem;color:var(--text-muted);font-size:.75rem">
+                  <i class="fas fa-image"></i>
+                </button>
+              <?php endif; ?>
+            </td>
+          </tr>
+        <?php endforeach; ?>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── Entry detail drawer ──────────────────────────────── -->
+<div id="al-drawer-overlay" onclick="closeDrawer()"></div>
+<div id="al-drawer">
+  <div class="drawer-header">
+    <div class="drawer-avatar" id="drawer-avatar"></div>
+    <div class="drawer-meta">
+      <strong id="drawer-name"></strong>
+      <span id="drawer-sub"></span>
+    </div>
+    <button onclick="closeDrawer()"
+            style="background:none;border:none;cursor:pointer;font-size:1.4rem;
+                   color:var(--text-muted);line-height:1;margin-left:.5rem;padding:0">
+      &times;
+    </button>
+  </div>
+  <div class="drawer-body">
+    <div id="drawer-badges" style="display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.85rem"></div>
+    <p id="drawer-text"></p>
+  </div>
+  <div class="drawer-footer">
+    <button onclick="closeDrawer()" class="btn btn-ghost btn-sm">Close</button>
+  </div>
+</div>
+
+<!-- ── Image modal (reused) ─────────────────────────────── -->
+<div id="imageModalOverlay" class="sidebar-overlay" style="z-index:500"></div>
+<div id="imageModal"
+     style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+            background:#111;border-radius:14px;padding:0;width:calc(100% - 2rem);
+            max-width:92vw;max-height:92vh;z-index:600;
+            box-shadow:0 24px 80px rgba(0,0,0,.55);overflow:hidden">
+  <div style="display:flex;justify-content:space-between;align-items:center;
+              padding:.6rem 1rem;background:rgba(255,255,255,.06);border-bottom:1px solid rgba(255,255,255,.1)">
+    <span style="color:#fff;font-size:.8rem;opacity:.7"><i class="fas fa-image"></i> Attachment</span>
+    <button data-close-image-modal
+            style="background:none;border:none;cursor:pointer;font-size:1.4rem;
+                   color:#fff;opacity:.8;line-height:1">&times;</button>
+  </div>
+  <div style="overflow:auto;max-height:calc(92vh - 46px);display:flex;align-items:center;justify-content:center;padding:.75rem">
+    <img id="imageModal-img" src="" alt="Attachment"
+         style="max-width:100%;max-height:calc(92vh - 80px);border-radius:8px;
+                display:block;object-fit:contain">
+  </div>
+</div>
+<style>#imageModal.open { display:flex !important; flex-direction:column; }</style>
+
+<script>
+function openDrawer(el) {
+  var id = el.dataset.id;
+  var text = el.dataset.task;
+  var name = el.dataset.username;
+  var time = el.dataset.time;
+  var dept = el.dataset.department;
+  var project = el.dataset.project;
+  var isKb = el.dataset.iskb === 'true';
+  var color = el.dataset.color;
+
+  // Avatar
+  var av = document.getElementById('drawer-avatar');
+  av.textContent = name.substring(0,2).toUpperCase();
+  av.style.background = color;
+
+  document.getElementById('drawer-name').textContent = name;
+  document.getElementById('drawer-sub').textContent  =
+    time + (dept ? ' · ' + dept : '');
+
+  // Badges
+  var badges = document.getElementById('drawer-badges');
+  badges.innerHTML = '';
+  if (project) {
+    badges.innerHTML += '<span style="background:var(--primary-subtle);color:var(--primary);font-size:.72rem;font-weight:600;padding:.2rem .6rem;border-radius:5px">' + project + '</span>';
+  }
+  if (isKb) {
+    badges.innerHTML += '<span style="background:#d1fae5;color:#065f46;font-size:.72rem;font-weight:600;padding:.2rem .6rem;border-radius:5px"><i class="fas fa-lightbulb"></i> Knowledge Base</span>';
+  } else {
+    badges.innerHTML += '<span style="background:#e0f2fe;color:#0369a1;font-size:.72rem;font-weight:600;padding:.2rem .6rem;border-radius:5px">Task / Issue</span>';
+  }
+
+  document.getElementById('drawer-text').textContent = text;
+
+  document.getElementById('al-drawer').classList.add('open');
+  document.getElementById('al-drawer-overlay').classList.add('open');
+}
+
+function closeDrawer() {
+  document.getElementById('al-drawer').classList.remove('open');
+  document.getElementById('al-drawer-overlay').classList.remove('open');
+}
+</script>
