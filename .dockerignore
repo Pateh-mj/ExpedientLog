@@ -1,0 +1,10 @@
+.git
+node_modules
+vendor
+.env
+storage/php_errors.log
+storage/*.sqlite
+*.log
+.DS_Store
+.idea
+.vscode
