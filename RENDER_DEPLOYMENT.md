@@ -152,16 +152,21 @@ From your local machine:
 
 ```bash
 # Get credentials from Render database Connections tab
-POSTGRES_HOST="<your-internal-host>"
+# IMPORTANT: For external connections, add .postgres.render.com suffix
+POSTGRES_HOST="dpg-d8ll6mk8aovs73dmqhb0-a.postgres.render.com"
 POSTGRES_PORT="5432"
 POSTGRES_USER="postgres"
-POSTGRES_PASSWORD="<your-password>"
+POSTGRES_PASSWORD="your_password_from_render"
 POSTGRES_DATABASE="exp_log"
 
 # Run the schema
 export PGPASSWORD="$POSTGRES_PASSWORD"
 psql -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d "$POSTGRES_DATABASE" -f schema.sql
 ```
+
+**Note:** The hostname format depends on where you're connecting from:
+- **From Render web service (internal):** `dpg-xxxxx.internal`
+- **From local machine (external):** `dpg-xxxxx.postgres.render.com`
 
 ### 6.2 Option B: Using DBeaver or pgAdmin (GUI)
 1. Download and install [DBeaver](https://dbeaver.io) or use [pgAdmin](https://www.pgadmin.org)
@@ -173,6 +178,14 @@ psql -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d "$POSTGRES_D
 Log into your database and run:
 
 ```bash
+# Use the same host as above (.postgres.render.com for external connections)
+POSTGRES_HOST="dpg-d8ll6mk8aovs73dmqhb0-a.postgres.render.com"
+POSTGRES_PORT="5432"
+POSTGRES_USER="postgres"
+POSTGRES_PASSWORD="your_password_from_render"
+POSTGRES_DATABASE="exp_log"
+
+export PGPASSWORD="$POSTGRES_PASSWORD"
 psql -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d "$POSTGRES_DATABASE" -c "SELECT table_name FROM information_schema.tables WHERE table_schema='public';"
 ```
 
@@ -291,12 +304,16 @@ Instead of a Render Disk:
 
 ### Can't Connect to Database
 1. Verify database service is **Running** (check database dashboard)
-2. Confirm you're using the **internal** host (starts with `internal-`)
-3. Verify port is `5432` (PostgreSQL default)
-4. Test locally:
+2. **Confirm hostname format:**
+   - **For Render web service:** Use `dpg-xxxxx.internal` (copy from Internal Database URL)
+   - **For local machine:** Use `dpg-xxxxx.postgres.render.com` (copy from External Database URL)
+3. Verify you're using user `postgres` (not `root`)
+4. Verify port is `5432` (PostgreSQL default)
+5. Test locally:
    ```bash
-   psql -h <host> -p 5432 -U postgres -d exp_log -c "SELECT 1;"
+   psql -h dpg-xxxxx.postgres.render.com -p 5432 -U postgres -d exp_log -c "SELECT 1;"
    ```
+   (It will prompt for password — paste the password from Render)
 
 ### 403 Forbidden or 404 Errors
 - Verify `.htaccess` is in the repo (it is)
