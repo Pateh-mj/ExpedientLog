@@ -1,10 +1,10 @@
 FROM php:8.2-apache
 
-# Install PHP extensions required for PDO PostgreSQL and typical needs
+# Install PHP extensions required for PDO MySQL and typical needs
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        libzip-dev zip unzip zlib1g-dev libonig-dev libpq-dev \
-    && docker-php-ext-install pdo pdo_pgsql mbstring zip \
+        libzip-dev zip unzip zlib1g-dev libonig-dev \
+    && docker-php-ext-install pdo pdo_mysql mbstring zip \
     && rm -rf /var/lib/apt/lists/*
 
 # Enable mod_rewrite for pretty URLs

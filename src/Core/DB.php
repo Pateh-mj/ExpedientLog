@@ -16,13 +16,13 @@ class DB
         if (self::$instance === null) {
             $host   = $_ENV['DB_HOST']     ?? 'localhost';
             $dbname = $_ENV['DB_NAME']     ?? 'exp_log';
-            $user   = $_ENV['DB_USER']     ?? 'postgres';
+            $user   = $_ENV['DB_USER']     ?? 'root';
             $pass   = $_ENV['DB_PASS']     ?? '';
-            $port   = $_ENV['DB_PORT']     ?? '5432';
+            $port   = $_ENV['DB_PORT']     ?? '3306';
 
             try {
                 self::$instance = new PDO(
-                    "pgsql:host={$host};port={$port};dbname={$dbname}",
+                    "mysql:host={$host};port={$port};dbname={$dbname};charset=utf8mb4",
                     $user,
                     $pass,
                     [
@@ -31,9 +31,10 @@ class DB
                         PDO::ATTR_EMULATE_PREPARES   => false,
                     ]
                 );
-                // Set PostgreSQL session timezone (Africa/Lusaka = UTC+2)
-                $timezone = $_ENV['APP_TIMEZONE'] ?? 'Africa/Lusaka';
-                self::$instance->exec("SET timezone = '{$timezone}'");
+                // Align MySQL session timezone with the app timezone (Africa/Lusaka = UTC+2)
+                $offset = (new \DateTime('now', new \DateTimeZone($_ENV['APP_TIMEZONE'] ?? 'Africa/Lusaka')))
+                    ->format('P');  // e.g. "+02:00"
+                self::$instance->exec("SET time_zone = '{$offset}'");
             } catch (PDOException $e) {
                 error_log('DB connection failed: ' . $e->getMessage());
                 http_response_code(503);
